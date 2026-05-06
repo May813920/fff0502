@@ -9,7 +9,6 @@ import os
 import time
 import av
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
-from streamlit_autorefresh import st_autorefresh
 
 # ==============================
 # 警報音效設定
@@ -413,7 +412,6 @@ elif mode == "使用鏡頭拍攝":
 # ==============================
 elif mode == "即時影像偵測":
     st.subheader("🎥 即時影像姿勢偵測")
-    st_autorefresh(interval=1000, key="realtime_alarm_refresh")
 
     st.info(
         "請按下 START，並允許瀏覽器使用攝影機。"
