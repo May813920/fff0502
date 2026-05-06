@@ -522,14 +522,14 @@ elif mode == "即時影像偵測":
     )
 
     # ==============================
-    # 前端警報聲播放監控
+    # 前端警報聲播放
     # ==============================
-   if ctx.video_processor and ctx.video_processor.should_alert:
-    alert_placeholder.markdown(
-        get_alarm_audio_html(),
-        unsafe_allow_html=True
-    )
-    ctx.video_processor.should_alert = False
+    if ctx.video_processor and ctx.video_processor.should_alert:
+        alert_placeholder.markdown(
+            get_alarm_audio_html(),
+            unsafe_allow_html=True
+        )
+        ctx.video_processor.should_alert = False
 
 # ==============================
 # 上傳影片並定時截圖模式
