@@ -9,7 +9,7 @@ import os
 import time
 import av
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
-
+from streamlit_autorefresh import st_autorefresh
 
 # ==============================
 # 警報音效設定
@@ -413,6 +413,7 @@ elif mode == "使用鏡頭拍攝":
 # ==============================
 elif mode == "即時影像偵測":
     st.subheader("🎥 即時影像姿勢偵測")
+    st_autorefresh(interval=1000, key="realtime_alarm_refresh")
 
     st.info(
         "請按下 START，並允許瀏覽器使用攝影機。"
@@ -525,10 +526,13 @@ elif mode == "即時影像偵測":
     # 前端警報聲播放
     # ==============================
     if ctx.video_processor and ctx.video_processor.should_alert:
+        st.error("🔊 警報聲已觸發：病人維持相同姿勢過久")
+
         alert_placeholder.markdown(
             get_alarm_audio_html(),
             unsafe_allow_html=True
         )
+
         ctx.video_processor.should_alert = False
 
 # ==============================
