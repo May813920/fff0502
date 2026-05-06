@@ -6,6 +6,30 @@ from ultralytics import YOLO
 import math
 import tempfile
 import os
+import time
+import av
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
+
+
+# ==============================
+# 警報音效設定
+# ==============================
+
+# Google Drive 音檔連結
+# 原始連結：
+# https://drive.google.com/file/d/1XSqWyTnSLoBKZ7kf5zE01VnY173bC16p/view?usp=sharing
+ALARM_AUDIO_URL = "https://drive.google.com/uc?export=download&id=1XSqWyTnSLoBKZ7kf5zE01VnY173bC16p"
+
+
+def get_alarm_audio_html():
+    """
+    使用 Google Drive 音檔播放警報聲
+    """
+    return f"""
+    <audio autoplay>
+        <source src="{ALARM_AUDIO_URL}" type="audio/mp3">
+    </audio>
+    """
 
 
 # ==============================
@@ -249,7 +273,7 @@ st.title("🏥 病房姿勢監測系統")
 
 st.write(
     "本系統使用 YOLOv8 Pose 偵測病人姿勢，"
-    "可透過上傳圖片、鏡頭拍照或影片取樣方式，"
+    "可透過上傳圖片、鏡頭拍照、即時影像或影片取樣方式，"
     "判斷病人目前為左側躺、右側躺或平躺。"
 )
 
@@ -272,6 +296,14 @@ video_interval = st.sidebar.number_input(
     min_value=1,
     max_value=60,
     value=5,
+    step=1
+)
+
+realtime_alarm_seconds = st.sidebar.number_input(
+    "即時模式：相同姿勢持續幾秒後警報",
+    min_value=3,
+    max_value=60,
+    value=10,
     step=1
 )
 
@@ -307,7 +339,7 @@ if "consecutive_count" not in st.session_state:
 # ==============================
 mode = st.radio(
     "請選擇影像輸入方式",
-    ["上傳圖片", "使用鏡頭拍攝", "上傳影片並定時截圖"],
+    ["上傳圖片", "使用鏡頭拍攝", "即時影像偵測", "上傳影片並定時截圖"],
     horizontal=False
 )
 
@@ -374,6 +406,141 @@ elif mode == "使用鏡頭拍攝":
 
     else:
         st.info("請先開啟鏡頭並拍攝一張照片。")
+
+
+# ==============================
+# 即時影像偵測模式
+# ==============================
+elif mode == "即時影像偵測":
+    st.subheader("🎥 即時影像姿勢偵測")
+
+    st.info(
+        "請按下 START，並允許瀏覽器使用攝影機。"
+        "系統會即時偵測姿勢，若相同姿勢維持過久，"
+        "會在畫面上顯示警報並播放警報聲。"
+    )
+
+    # 用來播放警報聲的區塊
+    alert_placeholder = st.empty()
+
+    class PoseVideoProcessor:
+        def __init__(self):
+            self.last_posture = None
+            self.start_time = time.time()
+            self.last_alarm_time = 0
+            self.should_alert = False
+
+        def recv(self, frame):
+            img = frame.to_ndarray(format="bgr24")
+
+            # YOLO 通常使用 RGB 圖像較穩定
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+            results = model(img_rgb, verbose=False)
+            current_posture = judge_posture(results)
+
+            now = time.time()
+
+            # 判斷姿勢是否維持相同
+            if current_posture == self.last_posture:
+                duration = now - self.start_time
+            else:
+                self.last_posture = current_posture
+                self.start_time = now
+                duration = 0
+                self.should_alert = False
+
+            annotated_image = results[0].plot()
+
+            info_text = f"Posture: {current_posture} | Time: {duration:.1f}s"
+
+            cv2.putText(
+                annotated_image,
+                info_text,
+                (30, 50),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA
+            )
+
+            # 達到即時警報條件
+            if duration >= realtime_alarm_seconds and current_posture not in [
+                "No Person Detected",
+                "Keypoints Not Enough"
+            ]:
+                h, w = annotated_image.shape[:2]
+
+                cv2.rectangle(
+                    annotated_image,
+                    (0, 0),
+                    (w, h),
+                    (255, 0, 0),
+                    15
+                )
+
+                cv2.putText(
+                    annotated_image,
+                    "ALARM: SAME POSTURE TOO LONG",
+                    (30, 120),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.1,
+                    (255, 0, 0),
+                    4,
+                    cv2.LINE_AA
+                )
+
+                # 每 5 秒觸發一次警報聲，避免聲音一直重複播放
+                if now - self.last_alarm_time >= 5:
+                    self.should_alert = True
+                    self.last_alarm_time = now
+                    print(
+                        f"⚠️ 警報觸發：{current_posture} "
+                        f"維持超過 {realtime_alarm_seconds} 秒"
+                    )
+
+            return av.VideoFrame.from_ndarray(
+                annotated_image,
+                format="bgr24"
+            )
+
+    ctx = webrtc_streamer(
+        key="realtime-pose-detection",
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration={
+            "iceServers": [
+                {"urls": ["stun:stun.l.google.com:19302"]}
+            ]
+        },
+        video_processor_factory=PoseVideoProcessor,
+        media_stream_constraints={
+            "video": True,
+            "audio": False
+        },
+        async_processing=True
+    )
+
+    # ==============================
+    # 前端警報聲播放監控
+    # ==============================
+    if ctx.video_processor:
+        while ctx.state.playing:
+            if ctx.video_processor.should_alert:
+                alert_placeholder.markdown(
+                    get_alarm_audio_html(),
+                    unsafe_allow_html=True
+                )
+
+                # 播放後重置
+                ctx.video_processor.should_alert = False
+
+                # 稍微停一下，避免一直插入 HTML
+                time.sleep(1)
+
+            else:
+                alert_placeholder.empty()
+                time.sleep(0.5)
 
 
 # ==============================
