@@ -8,25 +8,28 @@ import tempfile
 import os
 import time
 import av
+import base64
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
 
 # ==============================
 # 警報音效設定
 # ==============================
 
-# Google Drive 音檔連結
-# 原始連結：
-# https://drive.google.com/file/d/1XSqWyTnSLoBKZ7kf5zE01VnY173bC16p/view?usp=sharing
-ALARM_AUDIO_URL = "https://drive.google.com/uc?export=download&id=1XSqWyTnSLoBKZ7kf5zE01VnY173bC16p"
-
-
 def get_alarm_audio_html():
     """
-    使用 Google Drive 音檔播放警報聲
+    使用本機 alarm.mp3 播放警報聲
+    alarm.mp3 要放在 app.py 同一層
     """
+    audio_file = "alarm.mp3"
+
+    with open(audio_file, "rb") as f:
+        audio_bytes = f.read()
+
+    audio_base64 = base64.b64encode(audio_bytes).decode()
+
     return f"""
-    <audio autoplay>
-        <source src="{ALARM_AUDIO_URL}" type="audio/mp3">
+    <audio autoplay controls>
+        <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
     </audio>
     """
 
