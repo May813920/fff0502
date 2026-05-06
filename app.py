@@ -11,16 +11,33 @@ import av
 import base64
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
 
+
+# ==============================
+# Streamlit 頁面設定
+# ==============================
+st.set_page_config(
+    page_title="病房姿勢監測系統",
+    page_icon="🏥",
+    layout="centered"
+)
+
+
 # ==============================
 # 警報音效設定
 # ==============================
-
 def get_alarm_audio_html():
     """
-    使用本機 alarm.mp3 播放警報聲
-    alarm.mp3 要放在 app.py 同一層
+    使用 GitHub 專案中的 alarm.mp3 播放警報聲。
+    alarm.mp3 必須和 app.py 放在同一層。
     """
     audio_file = "alarm.mp3"
+
+    if not os.path.exists(audio_file):
+        return """
+        <div style="color:red; font-weight:bold;">
+            找不到 alarm.mp3，請確認音檔是否和 app.py 放在同一層。
+        </div>
+        """
 
     with open(audio_file, "rb") as f:
         audio_bytes = f.read()
@@ -28,9 +45,19 @@ def get_alarm_audio_html():
     audio_base64 = base64.b64encode(audio_bytes).decode()
 
     return f"""
-    <audio autoplay controls>
+    <audio id="alarm-audio" autoplay>
         <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
     </audio>
+
+    <script>
+        const audio = document.getElementById("alarm-audio");
+        if (audio) {{
+            audio.volume = 1.0;
+            audio.play().catch(function(error) {{
+                console.log("Autoplay was blocked:", error);
+            }});
+        }}
+    </script>
     """
 
 
@@ -199,6 +226,12 @@ def show_result(current_posture, annotated_image, is_alarm):
             "⚠️ 警報：病人已連續多張圖片維持相同姿勢，"
             "建議協助翻身或確認狀況。"
         )
+
+        st.markdown(
+            get_alarm_audio_html(),
+            unsafe_allow_html=True
+        )
+
     else:
         st.info("目前尚未達到警報條件。")
 
@@ -263,14 +296,29 @@ def extract_frames_from_video(video_path, interval_seconds):
 
 
 # ==============================
-# Streamlit 頁面設定
+# 載入 YOLO 模型
 # ==============================
-st.set_page_config(
-    page_title="病房姿勢監測系統",
-    page_icon="🏥",
-    layout="centered"
-)
+@st.cache_resource
+def load_model():
+    return YOLO("yolov8n-pose.pt")
 
+
+model = load_model()
+
+
+# ==============================
+# 初始化 Session State
+# ==============================
+if "last_posture" not in st.session_state:
+    st.session_state.last_posture = None
+
+if "consecutive_count" not in st.session_state:
+    st.session_state.consecutive_count = 0
+
+
+# ==============================
+# 頁面標題
+# ==============================
 st.title("🏥 病房姿勢監測系統")
 
 st.write(
@@ -313,27 +361,6 @@ st.sidebar.markdown("### 姿勢判斷類別")
 st.sidebar.write("- Left-Side Lying：左側躺")
 st.sidebar.write("- Right-Side Lying：右側躺")
 st.sidebar.write("- Supine：平躺 / 趴睡")
-
-
-# ==============================
-# 載入 YOLO 模型
-# ==============================
-@st.cache_resource
-def load_model():
-    return YOLO("yolov8n-pose.pt")
-
-
-model = load_model()
-
-
-# ==============================
-# 初始化 Session State
-# ==============================
-if "last_posture" not in st.session_state:
-    st.session_state.last_posture = None
-
-if "consecutive_count" not in st.session_state:
-    st.session_state.consecutive_count = 0
 
 
 # ==============================
@@ -419,20 +446,23 @@ elif mode == "即時影像偵測":
     st.info(
         "請按下 START，並允許瀏覽器使用攝影機。"
         "系統會即時偵測姿勢，若相同姿勢維持過久，"
-        "會在畫面上顯示警報並播放警報聲。"
+        "會在畫面上顯示警報並嘗試自動播放警報聲。"
+    )
+
+    st.warning(
+        "提醒：部分瀏覽器可能會阻擋自動播放聲音。"
+        "如果第一次沒有聲音，請先按下方「啟用警報聲」按鈕一次。"
     )
 
     # 用來播放警報聲的區塊
     alert_placeholder = st.empty()
 
-    # 用來播放警報聲的區塊
-    alert_placeholder = st.empty()
-
-    if st.button("🔊 測試警報聲"):
+    # 讓使用者先互動一次，提升瀏覽器允許播放聲音的機率
+    if st.button("🔊 啟用警報聲 / 測試警報聲"):
         alert_placeholder.markdown(
             get_alarm_audio_html(),
             unsafe_allow_html=True
-        )    
+        )
 
     class PoseVideoProcessor:
         def __init__(self):
@@ -444,7 +474,6 @@ elif mode == "即時影像偵測":
         def recv(self, frame):
             img = frame.to_ndarray(format="bgr24")
 
-            # YOLO 通常使用 RGB 圖像較穩定
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
             results = model(img_rgb, verbose=False)
@@ -452,7 +481,6 @@ elif mode == "即時影像偵測":
 
             now = time.time()
 
-            # 判斷姿勢是否維持相同
             if current_posture == self.last_posture:
                 duration = now - self.start_time
             else:
@@ -476,7 +504,6 @@ elif mode == "即時影像偵測":
                 cv2.LINE_AA
             )
 
-            # 達到即時警報條件
             if duration >= realtime_alarm_seconds and current_posture not in [
                 "No Person Detected",
                 "Keypoints Not Enough"
@@ -502,7 +529,6 @@ elif mode == "即時影像偵測":
                     cv2.LINE_AA
                 )
 
-                # 每 5 秒觸發一次警報聲，避免聲音一直重複播放
                 if now - self.last_alarm_time >= 5:
                     self.should_alert = True
                     self.last_alarm_time = now
@@ -533,17 +559,24 @@ elif mode == "即時影像偵測":
     )
 
     # ==============================
-    # 前端警報聲播放
+    # 即時警報聲播放
     # ==============================
-    if ctx.video_processor and ctx.video_processor.should_alert:
-        st.error("🔊 警報聲已觸發：病人維持相同姿勢過久")
+    if ctx.video_processor:
+        while ctx.state.playing:
+            if ctx.video_processor.should_alert:
+                st.error("🔊 警報：病人維持相同姿勢過久")
 
-        alert_placeholder.markdown(
-            get_alarm_audio_html(),
-            unsafe_allow_html=True
-        )
+                alert_placeholder.markdown(
+                    get_alarm_audio_html(),
+                    unsafe_allow_html=True
+                )
 
-        ctx.video_processor.should_alert = False
+                ctx.video_processor.should_alert = False
+                time.sleep(1)
+
+            else:
+                time.sleep(0.5)
+
 
 # ==============================
 # 上傳影片並定時截圖模式
