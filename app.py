@@ -422,6 +422,15 @@ elif mode == "即時影像偵測":
     # 用來播放警報聲的區塊
     alert_placeholder = st.empty()
 
+    # 用來播放警報聲的區塊
+    alert_placeholder = st.empty()
+
+    if st.button("🔊 測試警報聲"):
+        alert_placeholder.markdown(
+            get_alarm_audio_html(),
+            unsafe_allow_html=True
+        )    
+
     class PoseVideoProcessor:
         def __init__(self):
             self.last_posture = None
