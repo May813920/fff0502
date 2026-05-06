@@ -25,40 +25,46 @@ st.set_page_config(
 # ==============================
 # 警報音效設定
 # ==============================
-def get_alarm_audio_html():
+ALARM_AUDIO_FILE = "alarm.mp3"
+
+
+def play_alarm_audio(show_player=True, autoplay=True):
     """
-    使用 GitHub 專案中的 alarm.mp3 播放警報聲。
-    alarm.mp3 必須和 app.py 放在同一層。
+    播放 GitHub 專案中的 alarm.mp3
+    alarm.mp3 必須和 app.py 放在同一層
     """
-    audio_file = "alarm.mp3"
 
-    if not os.path.exists(audio_file):
-        return """
-        <div style="color:red; font-weight:bold;">
-            找不到 alarm.mp3，請確認音檔是否和 app.py 放在同一層。
-        </div>
-        """
+    if not os.path.exists(ALARM_AUDIO_FILE):
+        st.error("找不到 alarm.mp3，請確認音檔是否和 app.py 放在同一層。")
+        return
 
-    with open(audio_file, "rb") as f:
-        audio_bytes = f.read()
+    # 嘗試自動播放
+    if autoplay:
+        with open(ALARM_AUDIO_FILE, "rb") as f:
+            audio_bytes = f.read()
 
-    audio_base64 = base64.b64encode(audio_bytes).decode()
+        audio_base64 = base64.b64encode(audio_bytes).decode()
 
-    return f"""
-    <audio id="alarm-audio" autoplay>
-        <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-    </audio>
+        st.markdown(
+            f"""
+            <audio autoplay>
+                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+            </audio>
 
-    <script>
-        const audio = document.getElementById("alarm-audio");
-        if (audio) {{
-            audio.volume = 1.0;
-            audio.play().catch(function(error) {{
-                console.log("Autoplay was blocked:", error);
-            }});
-        }}
-    </script>
-    """
+            <script>
+                const audio = new Audio("data:audio/mp3;base64,{audio_base64}");
+                audio.volume = 1.0;
+                audio.play().catch(function(error) {{
+                    console.log("Autoplay was blocked:", error);
+                }});
+            </script>
+            """,
+            unsafe_allow_html=True
+        )
+
+    # 顯示播放器，若瀏覽器擋自動播放，仍可手動按播放
+    if show_player:
+        st.audio(ALARM_AUDIO_FILE, format="audio/mp3")
 
 
 # ==============================
@@ -227,10 +233,7 @@ def show_result(current_posture, annotated_image, is_alarm):
             "建議協助翻身或確認狀況。"
         )
 
-        st.markdown(
-            get_alarm_audio_html(),
-            unsafe_allow_html=True
-        )
+        play_alarm_audio(show_player=True, autoplay=True)
 
     else:
         st.info("目前尚未達到警報條件。")
@@ -451,18 +454,11 @@ elif mode == "即時影像偵測":
 
     st.warning(
         "提醒：部分瀏覽器可能會阻擋自動播放聲音。"
-        "如果第一次沒有聲音，請先按下方「啟用警報聲」按鈕一次。"
+        "如果自動播放失敗，請手動按播放器播放。"
     )
 
-    # 用來播放警報聲的區塊
-    alert_placeholder = st.empty()
-
-    # 讓使用者先互動一次，提升瀏覽器允許播放聲音的機率
     if st.button("🔊 啟用警報聲 / 測試警報聲"):
-        alert_placeholder.markdown(
-            get_alarm_audio_html(),
-            unsafe_allow_html=True
-        )
+        play_alarm_audio(show_player=True, autoplay=True)
 
     class PoseVideoProcessor:
         def __init__(self):
@@ -566,10 +562,7 @@ elif mode == "即時影像偵測":
             if ctx.video_processor.should_alert:
                 st.error("🔊 警報：病人維持相同姿勢過久")
 
-                alert_placeholder.markdown(
-                    get_alarm_audio_html(),
-                    unsafe_allow_html=True
-                )
+                play_alarm_audio(show_player=True, autoplay=True)
 
                 ctx.video_processor.should_alert = False
                 time.sleep(1)
