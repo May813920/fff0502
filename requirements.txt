@@ -8,3 +8,4 @@ torch==2.3.1
 torchvision==0.18.1
 av==12.3.0
 tornado==6.4.1
+streamlit-autorefresh
