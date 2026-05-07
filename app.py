@@ -27,44 +27,27 @@ st.set_page_config(
 # ==============================
 ALARM_AUDIO_FILE = "alarm.mp3"
 
-
 def play_alarm_audio(show_player=True, autoplay=True):
     """
-    播放 GitHub 專案中的 alarm.mp3
-    alarm.mp3 必須和 app.py 放在同一層
+    使用 HTML audio 播放專案中的 alarm.mp3
+    alarm.mp3 要和 app.py 放在同一層
     """
 
     if not os.path.exists(ALARM_AUDIO_FILE):
         st.error("找不到 alarm.mp3，請確認音檔是否和 app.py 放在同一層。")
         return
 
-    # 嘗試自動播放
-    if autoplay:
-        with open(ALARM_AUDIO_FILE, "rb") as f:
-            audio_bytes = f.read()
+    autoplay_text = "autoplay" if autoplay else ""
 
-        audio_base64 = base64.b64encode(audio_bytes).decode()
-
-        st.markdown(
-            f"""
-            <audio autoplay>
-                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-            </audio>
-
-            <script>
-                const audio = new Audio("data:audio/mp3;base64,{audio_base64}");
-                audio.volume = 1.0;
-                audio.play().catch(function(error) {{
-                    console.log("Autoplay was blocked:", error);
-                }});
-            </script>
-            """,
-            unsafe_allow_html=True
-        )
-
-    # 顯示播放器，若瀏覽器擋自動播放，仍可手動按播放
-    if show_player:
-        st.audio(ALARM_AUDIO_FILE, format="audio/mp3")
+    st.markdown(
+        f"""
+        <audio controls {autoplay_text}>
+            <source src="{ALARM_AUDIO_FILE}" type="audio/mp3">
+            您的瀏覽器不支援音訊播放。
+        </audio>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 # ==============================
